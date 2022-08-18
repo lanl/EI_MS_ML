@@ -20,6 +20,8 @@ import time
 
 # todo - yes those were globals and it needs to be refactored but pygad can't take nested functions
 # todo - so that means you can't have a factory method to produce a properly scoped energy function
+# todo - this could be wrapped in a class with a class data member and class method for calculations 
+# todo - but this does have the advantage of sharing memory possibly. 
 
 ga_wrapper = json.load(open(sys.argv[1]))
 query_df = pd.read_pickle(ga_wrapper["query_df_path"])
@@ -35,7 +37,9 @@ convergence_limit = int(sys.argv[3])
 def find_rank(row):
     filtered_pred_color_set = row["filtered_color_sets"]
     filtered_color_set_length = len(filtered_pred_color_set)
+    #todo - refactor as matrix multiplication for improved performance
     color_scores = reference_df["true_color_sets"].apply(lambda z: len(filtered_pred_color_set.intersection(z)) / filtered_color_set_length if filtered_color_set_length else 1)
+    #todo - can precalculated equivalent smiles but this is minor improvement
     return np.multiply(color_scores, row["cosines"]).rank(ascending=False)[reference_df.index[reference_df["SMILES"] == row["SMILES"]]].min() - 1
 
 
