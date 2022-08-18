@@ -35,11 +35,13 @@ convergence_limit = int(sys.argv[3])
 #print(reference_df)
 
 def find_rank(row):
+    #todo - the length of the set could be precalculated at energy_function
     filtered_pred_color_set = row["filtered_color_sets"]
     filtered_color_set_length = len(filtered_pred_color_set)
     #todo - refactor as matrix multiplication for improved performance
     color_scores = reference_df["true_color_sets"].apply(lambda z: len(filtered_pred_color_set.intersection(z)) / filtered_color_set_length if filtered_color_set_length else 1)
     #todo - can precalculated equivalent smiles but this is minor improvement
+    #todo - change from index to loc or at (may assume uniqueness)
     return np.multiply(color_scores, row["cosines"]).rank(ascending=False)[reference_df.index[reference_df["SMILES"] == row["SMILES"]]].min() - 1
 
 
