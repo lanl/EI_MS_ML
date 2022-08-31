@@ -33,7 +33,7 @@ from collections import defaultdict
 
 def combine_NIST_MSPs(path_to_msp_directory, output=None, mz_min=0, mz_max=500):
     entries = []
-    for msp_filepath in [os.path.join(path_to_msp_directory, name) for name in os.listdir(path_to_msp_directory)][:10]:
+    for msp_filepath in [os.path.join(path_to_msp_directory, name) for name in os.listdir(path_to_msp_directory)]:
         with open(msp_filepath) as msp_filehandle:
             for msp_line in msp_filehandle:
                 if msp_line.startswith("Name:"):
@@ -335,21 +335,22 @@ def predict_subgroups(entries, model_directory, depth=30):
 def extract_relevant_colors(entries, model_directory, depth=30):
     allowed_colors = set()
     for model in os.listdir(model_directory):
+        #print(model)
         if str(depth) in model:
             model_dict = json.load(open(model_directory + "/" + model))
             allowed_colors.add(model_dict["color"])
     for entry in entries:
-        entry["all_colors"] = set()
+        #print(entry)
+        nascent_entry_colors = set()
         for color_set in entry["color_dict"].values():
-            entry["all_colors"].update(color_set)
-        entry["all_colors"] = entry["all_colors"].intersection(allowed_colors)
+            nascent_entry_colors.update(color_set)
+        entry["all_colors"] = nascent_entry_colors.intersection(allowed_colors)
     return entries
 
 
 def convert_to_dataframe(entries):
     dataframe = pd.DataFrame()
-    dataframe["predicted_color_sets"] = [entry["predicted_color_set"] for entry in entries if
-                                         "predicted_color_set" in entry]
+    dataframe["predicted_color_sets"] = [entry["predicted_color_set"] for entry in entries if "predicted_color_set" in entry]
     dataframe["true_color_sets"] = [entry["all_colors"] for entry in entries]
     dataframe["spectra"] = [entry["spectrum"] for entry in entries]
     dataframe["SMILES"] = [entry["smiles"] for entry in entries]
@@ -362,9 +363,24 @@ def dump_for_optimization(reference_df, query_df, reference_dump_path, query_dum
     query_df["orig_rank"] = query_df.apply(lambda x: pd.Series(x["cosines"]).rank(ascending=False)[reference_df["SMILES"] == x["SMILES"]].min() - 1, axis=1)
     #query_df.drop("spectra", axis=1, inplace=True)
     #reference_df.drop("spectra", axis=1, inplace=True)
+
+    colors = sorted(list(set([c for s in query_df["predicted_color_sets"] for c in s])))
+
+    pred_color_vectors = []
+    for z in query_df["predicted_color_sets"]:
+        color_vector = [1 if x in z else 0 for x in colors]
+        pred_color_vectors.append(np.array(color_vector, dtype=np.int8))
+    query_df["pred_color_vector"] = pred_color_vectors
+
+    true_color_vectors = []
+    for z in reference_df["true_color_sets"]:
+        color_vector = [1 if x in z else 0 for x in colors]
+        true_color_vectors.append(np.array(color_vector, dtype=np.int8))
+    reference_df["true_color_vector"] = true_color_vectors
+
     reference_df.to_pickle(reference_dump_path)
     query_df.to_pickle(query_dump_path)
-    colors = sorted(list(set([c for s in query_df["predicted_color_sets"] for c in s])))
+
     ga_wrapper = {
         "wrapper_path": arguments["<pygad_wrapper_path>"],
         "query_df_path": query_dump_path,
@@ -454,9 +470,7 @@ if __name__ == '__main__':
         else:
             tree_depth = 30
         print("Building Models")
-        build_models(training_data, testing_data, hyperparam_dict={'n_estimators': num_trees, 'depth': tree_depth},
-                     count_threshold=count_threshold, max_depth=int(arguments['<color_depth>']), num_split=5,
-                     output_dir=arguments['<model_dir>'])
+        #build_models(training_data, testing_data, hyperparam_dict={'n_estimators': num_trees, 'depth': tree_depth}, count_threshold=count_threshold, max_depth=int(arguments['<color_depth>']), num_split=5, output_dir=arguments['<model_dir>'])
         print("Extracting")
         training_data = extract_relevant_colors(training_data, arguments['<model_dir>'], tree_depth)
         testing_data = extract_relevant_colors(testing_data, arguments['<model_dir>'], tree_depth)
