@@ -13,6 +13,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # python built-in libraries
 
 import warnings
+import swifter
 import multiprocessing as mp
 import json
 import sys
@@ -20,36 +21,37 @@ import time
 
 # todo - yes those were globals and it needs to be refactored but pygad can't take nested functions
 # todo - so that means you can't have a factory method to produce a properly scoped energy function
-# todo - this could be wrapped in a class with a class data member and class method for calculations 
-# todo - but this does have the advantage of sharing memory possibly. 
 
 ga_wrapper = json.load(open(sys.argv[1]))
 query_df = pd.read_pickle(ga_wrapper["query_df_path"])
 reference_df = pd.read_pickle(ga_wrapper["reference_df_path"])
+ref_true_color_matrix = np.matrix([x for x in reference_df["true_color_vector"]], dtype=np.uint8).T
 colors = ga_wrapper["colors"]
+query_df["indices"] = [reference_df["SMILES"] == qSMILES for qSMILES in query_df["SMILES"]]
+
+
 start_time = time.time()
 cluster_limit_hours = int(sys.argv[2])
 convergence_limit = int(sys.argv[3])
 
-#print(query_df)
-#print(reference_df)
-
 def find_rank(row):
-    #todo - the length of the set could be precalculated at energy_function
-    filtered_pred_color_set = row["filtered_color_sets"]
-    filtered_color_set_length = len(filtered_pred_color_set)
-    #todo - refactor as matrix multiplication for improved performance
-    color_scores = reference_df["true_color_sets"].apply(lambda z: len(filtered_pred_color_set.intersection(z)) / filtered_color_set_length if filtered_color_set_length else 1)
-    #todo - can precalculated equivalent smiles but this is minor improvement
-    #todo - change from index to loc or at (may assume uniqueness)
-    return np.multiply(color_scores, row["cosines"]).rank(ascending=False)[reference_df.index[reference_df["SMILES"] == row["SMILES"]]].min() - 1
-
+    if row["filtered_color_vector_magnitude"]:
+        color_scores = np.dot(np.matrix(row["filtered_color_vector"], dtype=np.uint8), ref_true_color_matrix) / row["filtered_color_vector_magnitude"]
+        return pd.Series(np.ravel(np.multiply(color_scores, row["cosines"]))).rank(ascending=False)[reference_df.index[row["indices"]]].min() - 1
+    else:
+        return row["orig_rank"]
 
 def energy_function(chromosome, solution_idx):
-    allowed_colors = set([color for allele_value, color in zip(chromosome, colors) if allele_value])
-    query_df["filtered_color_sets"] = query_df["predicted_color_sets"].apply(lambda x: x.intersection(allowed_colors))
+    print(chromosome)
+    chromosome = [0 for _ in chromosome]
+    t1 = time.time()
+
+    query_df["filtered_color_vector"] = query_df["pred_color_vector"].apply(lambda x: np.logical_and(x, chromosome))
+    query_df["filtered_color_vector_magnitude"] = [np.sum(x) for x in query_df["filtered_color_vector"]]
     new_ranks = query_df.apply(find_rank, axis=1)
     energy = np.sum(np.sign(query_df["orig_rank"] - new_ranks))
+    t2 = time.time()
+    print(t2 - t1)
     return energy
 
 def on_generation_dump(ga_instance):
@@ -83,7 +85,7 @@ def on_generation_dump(ga_instance):
         ga_wrapper["total_pop"] += ga_instance.sol_per_pop
         ga_wrapper["total_generations"] += 1
         ga_wrapper["previous_population"] = ga_instance.population.tolist()
-        json.dump(ga_wrapper, open(ga_wrapper["wrapper_path"], 'w+'), indent=4, sort_keys=True)
+        #json.dump(ga_wrapper, open(ga_wrapper["wrapper_path"], 'w+'), indent=4, sort_keys=True)
     else:
         exit()
 
@@ -95,10 +97,10 @@ if __name__ == '__main__':
     if ga_wrapper["converged"]:
         warnings.warn("Optimizing Converged Model")
     ga_instance = pygad.GA(
-        num_generations=ga_wrapper["num_generations"],
-        num_parents_mating=ga_wrapper["num_parents_mating"],
+        num_generations=1, #ga_wrapper["num_generations"],
+        num_parents_mating=1,
         fitness_func=energy_function,
-        sol_per_pop=int(mp.cpu_count()),
+        sol_per_pop=1,
         num_genes=ga_wrapper["num_genes"],
         gene_type=int,
         init_range_low=ga_wrapper["init_range_low"],
