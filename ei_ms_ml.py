@@ -411,7 +411,7 @@ def dump_for_optimization(reference_df, query_df, reference_dump_path, query_dum
         "converged": 0,
         "all_solutions": {}
     }
-    json.dump(ga_wrapper, open(ga_wrapper["wrapper_path"], 'w+'))
+    json.dump(ga_wrapper, open(ga_wrapper["wrapper_path"], 'w+'), indent=4, sort_keys=True)
 
 
 def find_rank_factory(reference_df):
@@ -447,7 +447,11 @@ if __name__ == '__main__':
         print("Combining")
         mainlib = combine_NIST_MSPs(arguments['<mainlib_path>'])
         print("Smiling")
-        mainlib = add_smiles_to_entries(mainlib, inchikey_smiles_store=arguments["<inchikey_smiles_store>"])
+
+        os.system("cp " + arguments["<inchikey_smiles_store>"] + " /tmp/inchikey_colors_store.sqlite")
+        
+
+        mainlib = add_smiles_to_entries(mainlib, inchikey_smiles_store="/tmp/inchikey_colors_store.sqlite")
         print("Coloring")
         mainlib = d_colorize_entries(mainlib, int(arguments['<color_depth>']))
         if arguments['--seed']:
@@ -504,9 +508,9 @@ if __name__ == '__main__':
             tree_depth = int(arguments['--tree_depth'])
         else:
             tree_depth = 30
-        build_models(training_data, testing_data, hyperparam_dict={'n_estimators': num_trees, 'depth': tree_depth},
-                     count_threshold=count_threshold, max_depth=int(arguments['<color_depth>']), num_split=5,
-                     output_dir=arguments['<model_dir>'])
+        #build_models(training_data, testing_data, hyperparam_dict={'n_estimators': num_trees, 'depth': tree_depth},
+        #             count_threshold=count_threshold, max_depth=int(arguments['<color_depth>']), num_split=5,
+        #             output_dir=arguments['<model_dir>'])
     elif arguments['evaluate_pygad_solution']:
         wrapper = json.load(open(arguments["<pygad_wrapper_path>"]))
         solution = wrapper["converged_solution"]["converged_chromosome"]
